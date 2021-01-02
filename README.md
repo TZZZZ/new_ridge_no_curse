@@ -1,0 +1,1 @@
+# new_ridge_no_curse
