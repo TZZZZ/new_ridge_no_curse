@@ -8,6 +8,54 @@ from numpy.polynomial import polynomial
 import matplotlib.pyplot as plt
 import sympy
 
+from scipy import integrate
+
+def get_alpha(phi_deriv, n):
+    """Integrate phi_deriv(<a,x>)^2 dx over probability measure on the sphere S^{n-1}"""
+    dens = lambda t: (1-t**2)**((n - 3)/2)
+    func = lambda t: phi_deriv(t)**2 * dens(t)
+    return integrate.quad(func, -1, 1)[0] / integrate.quad(dens, -1, 1)[0]
+
+
+
+def get_test_func(deg, trigpcos, trigpsin):
+    """Returns function x**deg * T(x).
+    T is a trigonometric polynomial:
+    T(x) = a_0 + sum_{k=1}^K a_k*cos(kx) + b_k*sin(kx)
+    trigpcos = [a_0, a_1, a_2, ..., a_K]
+    trigpsin =      [b_1, b_2, ..., b_K]
+    """
+    def f(x):
+        res = 0 * x  # works for vector and scalar x
+        res += trigpcos[0]
+        K = len(trigpsin)
+        # k=1: trigpcos[1], trigpsin[0], sin(x), cos(x);  1 <= k <= K
+        for k in range(1, K + 1):
+            res += trigpcos[k] * np.cos(k*x)
+            res += trigpsin[k-1] * np.sin(k*x)
+        return (x**deg) * res
+
+    return f
+
+
+def get_test_func_deriv(deg, trigpcos, trigpsin):
+    """Derivative of function from get_test_func."""
+    # f = x^deg (a_0 + sum_1^K a_k cos(kx) + b_k sin(kx))
+    # f' = deg x^{deg-1} * (a_0 + sum_1^K a_k cos(kx) + b_k sin(kx)) +
+    #       + x^deg * sum_1^K (-a_k*ksin(kx) + b_k*kcos(kx)) = 
+    #    = x^{deg-1} * (a_0*deg + sum_1^K a_k{deg*cos(kx)-kx*sin(kx)} + b_k{deg*sin(kx)+kx*cos(kx)}
+    def f_deriv(x):
+        res = 0 * x
+        res += trigpcos[0] * deg
+        K = len(trigpsin)
+        for k in range(1, K+1):
+            res += trigpcos[k] * (deg*np.cos(k*x) - k*x*np.sin(k*x))
+            res += trigpsin[k-1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
+        return (x**(deg-1)) * res
+
+    return f_deriv
+
+
 
 # Utility functions
 
@@ -231,7 +279,11 @@ class RidgeSolver:
         print(max_lambda, max_idx, vgamma)
         if self.a is not None:
             self.sign = 1 if self.a[max_idx] >= 0 else -1
-
+        self.osc2 = []
+        self.appr2 = []
+        self.lambdas_true2 = []
+        self.lambdas042 = []
+        self.lambdas082 = []
         for i in range(n):
             if i == max_idx:
                 w[i] = max_lambda
@@ -241,6 +293,21 @@ class RidgeSolver:
                 fi[i] = 0.1
                 poly_fi = self.fit_polynomial(fi)
                 lambda_fi = embed_polynomials_l2(poly0, poly_fi, l=self.l)
+                
+                lambda_fi2 = embed_polynomials_l2(poly0, poly_fi, l=0.8)
+                self.lambdas042.append(lambda_fi)
+                self.lambdas082.append(lambda_fi2)
+                self.lambdas_true2.append(((self.a[i] / vgamma) + 9 * max_lambda) / 10)
+                #oscc = self.get_oscillation(poly0)
+                #self.osc.append(oscc)
+                ts1 = np.linspace(-1, 1, 300)
+                values_phi1 = polynomial.polyval(ts1, poly_fi.coef)
+                values_phi_real = np.array([self.phi(t * self.a.dot(fi)) for t in ts1])
+                #print("Approximation poly_ei", abs(values_phi_real - values_phi1).mean())
+                appr2 = abs(values_phi_real - values_phi1).mean()
+                self.appr2.append(appr2)
+                print(lambda_fi2, lambda_fi, ((self.a[i] / vgamma) + 9 * max_lambda) / 10)
+                print(appr2)
                 w[i] = 10*abs(lambda_fi) - 9*max_lambda
 
         newa = w / np.linalg.norm(w)
@@ -519,3 +586,25 @@ if __name__ == "__main__":
         ##return np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x))
     ###return (x*x) ** deg
     ##return (np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x))) * (x**8)
+
+
+
+#gamma = solver.gammas[4]
+#vgamma = solver.a.dot(gamma)
+
+#ei = np.zeros(solver.n)
+#i = 30
+#ei[i] = 1
+#poly_ei = solver.fit_polynomial(ei)
+
+#poly0 = solver.fit_polynomial(gamma)
+#ts1 = np.linspace(1/solver.lambdas_true[30], -1/solver.lambdas_true[30], 300)
+#ts2 = np.linspace(-1, 1, 300)
+#values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
+#values_phi2 = polynomial.polyval(ts2, poly0.coef)
+#values_phi_real = np.array([solver.phi(t * solver.a.dot(ei)) for t in ts1])
+
+#plt.plot(ts2, values_phi1)
+#plt.plot(ts2, values_phi_real)
+#plt.plot(ts2, values_phi2)
+#plt.show()
