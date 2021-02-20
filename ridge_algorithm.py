@@ -5,7 +5,6 @@ from time import time
 
 import numpy as np
 from numpy.polynomial import polynomial
-import matplotlib
 import matplotlib.pyplot as plt
 import sympy
 
@@ -34,10 +33,10 @@ def embed_polynomials_l2(p1, p2, l=1.0):
     return 1 / min_mu
 
 
-def minimize_polynomial(poly, a, b):
-    """Find minimal value and argmin for poly(t)->min, a <= t <= b."""
+def extremize_polynomial(poly, a, b):
+    """Find min/max values and args for polynomial on [a,b]."""
 
-    # polynomial P has minimum either in P'(x)=0, or x=a, or x=b
+    # polynomial P has extremum either in P'(x)=0, or x=a, or x=b
     roots = poly.deriv().roots()
     real_roots = [root.real for root in roots if abs(root.imag) < 1e-8]
     active_roots = [root for root in real_roots if a <= root <= b]
@@ -45,7 +44,17 @@ def minimize_polynomial(poly, a, b):
 
     values = polynomial.polyval(points, poly.coef)
     min_idx = np.argmin(values)
-    return values[min_idx], points[min_idx]
+    max_idx = np.argmax(values)
+    return {
+        'min': values[min_idx], 'argmin': points[min_idx],
+        'max': values[max_idx], 'argmax': points[max_idx],
+    }
+
+
+def minimize_polynomial(poly, a, b):
+    """Find minimal value and argmin for poly(t)->min, a <= t <= b."""
+    extr = extremize_polynomial(poly, a, b)
+    return extr['min'], extr['argmin']
 
 
 class RidgeSolver:
@@ -85,6 +94,11 @@ class RidgeSolver:
         v_gamma = np.dot(gamma, self.a)
         ts = np.linspace(-self.l*np.sqrt(50), self.l*np.sqrt(50), 10)
         return max(abs(poly(t) - self.phi(v_gamma * t)) for t in ts)
+
+    def get_oscillation(self, poly, h=1):
+        """return max_{|t|<=h} |poly(t)-poly(0)|"""
+        extr = extremize_polynomial(poly - poly(0), -h, h)
+        return max(abs(extr['max']), abs(extr['min']))
 
     def solve(self):
         typical_gamma = self.step_get_typical_gamma()
@@ -145,19 +159,7 @@ class RidgeSolver:
     
     def substep_check_constant(self, all_poly, omeg=0.015):
         h = np.sqrt(self.n)
-        deltas_i_h_nu = []
-        for i in range(len(all_poly)):
-            polyi = all_poly[i]
-            polyi -= polynomial.polyval(0, polyi.coef)
-            roots = polyi.deriv().roots()
-            real_roots = [root.real for root in roots if abs(root.imag) < 1e-8]
-            active_roots = [root for root in real_roots if -h <= root <= h]
-            points = active_roots + [-h, h]
-            values = polynomial.polyval(points, polyi.coef)
-            max_idx = np.argmax(values)
-            min_idx = np.argmin(values)
-            best = max(abs(values[max_idx]), abs(values[min_idx]))
-            deltas_i_h_nu.append(best)
+        deltas = [self.get_oscillation(poly, h) for poly in all_poly]
         deltamed = np.median(deltas_i_h_nu)
         #print("Deltamed", deltamed)
         return deltamed < omeg
@@ -301,4 +303,3 @@ def omega1():
 
 if __name__ == "__main__":
     test_example()
-
