@@ -7,6 +7,7 @@ import numpy as np
 from numpy.polynomial import polynomial
 import matplotlib.pyplot as plt
 import sympy
+from scipy import integrate
 
 from scipy import integrate
 
@@ -337,6 +338,54 @@ class RidgeSolver:
         #print("Omega1", omega1())
 
 
+def get_alpha(phi_deriv, n):
+    """Integrate phi_deriv(<a,x>)^2 dx over probability measure on the sphere S^{n-1}"""
+    dens = lambda t: (1-t**2)**((n - 3)/2)
+    func = lambda t: phi_deriv(t)**2 * dens(t)
+    return integrate.quad(func, -1, 1)[0] / integrate.quad(dens, -1, 1)[0]
+
+
+
+def get_test_func(deg, trigpcos, trigpsin):
+    """Returns function x**deg * T(x).
+
+    T is a trigonometric polynomial:
+    T(x) = a_0 + sum_{k=1}^K a_k*cos(kx) + b_k*sin(kx)
+
+    trigpcos = [a_0, a_1, a_2, ..., a_K]
+    trigpsin =      [b_1, b_2, ..., b_K]
+    """
+    def f(x):
+        res = 0 * x  # works for vector and scalar x
+        res += trigpcos[0]
+        K = len(trigpsin)
+        # k=1: trigpcos[1], trigpsin[0], sin(x), cos(x);  1 <= k <= K
+        for k in range(1, K + 1):
+            res += trigpcos[k] * np.cos(k*x)
+            res += trigpsin[k-1] * np.sin(k*x)
+        return (x**deg) * res
+
+    return f
+
+
+def get_test_func_deriv(deg, trigpcos, trigpsin):
+    """Derivative of function from get_test_func."""
+    # f = x^deg (a_0 + sum_1^K a_k cos(kx) + b_k sin(kx))
+    # f' = deg x^{deg-1} * (a_0 + sum_1^K a_k cos(kx) + b_k sin(kx)) +
+    #       + x^deg * sum_1^K (-a_k*ksin(kx) + b_k*kcos(kx)) = 
+    #    = x^{deg-1} * (a_0*deg + sum_1^K a_k{deg*cos(kx)-kx*sin(kx)} + b_k{deg*sin(kx)+kx*cos(kx)}
+    def f_deriv(x):
+        res = 0 * x
+        res += trigpcos[0] * deg
+        K = len(trigpsin)
+        for k in range(1, K+1):
+            res += trigpcos[k] * (deg*np.cos(k*x) - k*x*np.sin(k*x))
+            res += trigpsin[k-1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
+        return (x**(deg-1)) * res
+
+    return f_deriv
+
+
 def test_example():
     n = 50
     seed = int(time() % 10000)
@@ -359,6 +408,7 @@ def test_example():
     trigpsin = trigparams[np.arange(1, 2*K + 1, 2)]#b1, b2, ... bK
     l = 0.4
     deg = 2#if deg == -1, test trigonometric, else test x**(2deg)
+
 
     def phi(x, deg = -1):
         if deg == -1:
