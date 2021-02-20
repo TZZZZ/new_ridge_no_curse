@@ -226,13 +226,71 @@ class RidgeSolver:
             print("Approximation error of phi in C:", max(np.abs(values_phi1 - values_phi_real)))
         #print("Omega1", omega1())
 
+    def analyze_embedding(self, gamma1, gamma2):
+        poly1 = self.fit_polynomial(gamma1)
+        poly2 = self.fit_polynomial(gamma2)
+
+        true_lambda = np.dot(self.a, gamma2) / np.dot(self.a, gamma1)
+        ts = np.linspace(-1, 1, 500)
+        fig, axs = plt.subplots(2, 2)
+
+        def get_range(values):
+            min_val = np.min(values)
+            max_val = np.max(values)
+            size = max_val - min_val
+            return min_val - 0.3*size, max_val + 0.3*size
+
+        ax0 = axs[0,0]
+        ax0.set_title('poly1, lambda = u2/u1 = {:.6f}'.format(true_lambda))
+        poly1_values = [poly1(t) for t in ts]
+        min_y1, max_y1 = get_range(poly1_values)
+        ax0.plot(ts, poly1_values, color='red', label='poly_1')
+        ax0.plot(ts, [min(max_y1, max(min_y1, poly2(t/true_lambda))) for t in ts], color='blue', label='poly_2')
+        ax0.plot(ts, [self.phi(t * np.dot(self.a, gamma1)) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
+        ax0.legend()
+
+        ax1 = axs[0,1]
+        ax1.set_title('poly2')
+        poly2_values = [poly2(t) for t in ts]
+        min_y2, max_y2 = get_range(poly2_values)
+        ax1.plot(ts, [min(max_y2, max(min_y2, poly1(t*true_lambda))) for t in ts], color='red', label='poly_1')
+        ax1.plot(ts, poly2_values, color='blue', label='poly_2')
+        ax1.plot(ts, [self.phi(t * np.dot(self.a, gamma2)) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
+        ax1.legend()
+
+        ax2 = axs[1,0]
+        phi_values = [self.phi(t) for t in ts]
+        ax2.plot(ts, phi_values, color='green')
+        min_y, max_y = get_range(phi_values)
+
+        u1 = -np.dot(self.a, gamma1)
+        ax2.axvline(x=u1, color='red')
+        ax2.axvline(x=-u1, color='red')
+
+        u2 = -np.dot(self.a, gamma2)
+        ax2.axvline(x=u2, color='blue')
+        ax2.axvline(x=-u2, color='blue')
+
+        ax2.set_title('u1={:.6f}, u2={:.6f}'.format(u1,u2))
+        ax2.plot(ts, [min(max_y, max(min_y, poly1(t/u1))) for t in ts], linestyle='dotted', color='red')
+        ax2.plot(ts, [min(max_y, max(min_y, poly2(t/u2))) for t in ts], linestyle='dotted', color='blue')
+
+        # est embedding
+        est_lambda = embed_polynomials_l2(poly1, poly2)
+        ax3 = axs[1,1]
+        ax3.set_title('est embedding, lambda = {:.6f}'.format(est_lambda))
+        ax3.plot(ts, poly1_values, color='red')
+        ax3.plot(ts, [min(max_y, max(min_y, poly2(t/est_lambda))) for t in ts], color='blue')
+        ax3.plot(ts, [self.phi(t * np.dot(self.a, gamma1)) for t in ts], linewidth=4, alpha=0.2, color='green')
+
+        plt.show()
+
 
 def get_alpha(phi_deriv, n):
     """Integrate phi_deriv(<a,x>)^2 dx over probability measure on the sphere S^{n-1}"""
     dens = lambda t: (1-t**2)**((n - 3)/2)
     func = lambda t: phi_deriv(t)**2 * dens(t)
     return integrate.quad(func, -1, 1)[0] / integrate.quad(dens, -1, 1)[0]
-
 
 
 def get_test_func(deg, trigpcos, trigpsin):
