@@ -248,9 +248,10 @@ def get_test_func(deg, trigpcos, trigpsin):
         res = 0 * x  # works for vector and scalar x
         res += trigpcos[0]
         K = len(trigpsin)
+        # k=1: trigpcos[1], trigpsin[0], sin(x), cos(x);  1 <= k <= K
         for k in range(1, K + 1):
             res += trigpcos[k] * np.cos(k*x)
-            res += trigpsin[k] * np.sin(k*x)
+            res += trigpsin[k-1] * np.sin(k*x)
         return (x**deg) * res
 
     return f
@@ -268,7 +269,7 @@ def get_test_func_deriv(deg, trigpcos, trigpsin):
         K = len(trigpsin)
         for k in range(1, K+1):
             res += trigpcos[k] * (deg*np.cos(k*x) - k*x*np.sin(k*x))
-            res += trigpsin[k] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
+            res += trigpsin[k-1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
         return (x**(deg-1)) * res
 
     return f_deriv
