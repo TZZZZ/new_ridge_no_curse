@@ -80,15 +80,15 @@ class RidgeSolver:
         self.a = np.array(a) if a is not None else None
         self.phi = phi
 
+    def get_random_unit_vector(self):
+        v = np.array([random.gauss(0, 1) for _ in range(self.n)])
+        return v / np.linalg.norm(v)
+
     def fit_polynomial(self, gamma):
         """Fit polynomial to a function phi(t_k <a,gamma>), |t_k|<=1."""
         ts = np.linspace(-1, 1, 2 * self.N1 + 1)
         ys = [self.f_eps(t * gamma) for t in ts]
         return polynomial.Polynomial.fit(ts, ys, deg=self.M)
-
-    def get_random_unit_vector(self):
-        v = np.array([random.gauss(0, 1) for _ in range(self.n)])
-        return v / np.linalg.norm(v)
 
     def check_fitting(self, gamma, poly):
         v_gamma = np.dot(gamma, self.a)
