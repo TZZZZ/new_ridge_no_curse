@@ -1,4 +1,4 @@
-import random 
+import random
 import logging
 from math import erf, sqrt
 from time import time
@@ -12,7 +12,8 @@ from scipy import integrate
 
 # Utility functions
 
-def embed_polynomials_l2(p1, p2, l=1.0):
+
+def embed_polynomials_l2(p1, p2, l=1.0, calc_score=False):
     """Find lambda for inclusion p1->p2, i.e., such that p1(t) ~ p2(t/lambda), |t|<l.
     
     Params:
@@ -31,7 +32,10 @@ def embed_polynomials_l2(p1, p2, l=1.0):
     S_coeff = [float(c) for c in reversed(sympy.Poly(S.expand()).all_coeffs())]  # sympy magic
     S_poly = polynomial.Polynomial(S_coeff)
     min_value, min_mu = minimize_polynomial(S_poly, -1, 1)
-    return 1 / min_mu
+    if not calc_score:
+        return 1 / min_mu
+    score = S_poly(0) / min_value
+    return {'lambda': 1 / min_mu, 'score': score}
 
 
 def extremize_polynomial(poly, a, b):
@@ -226,39 +230,46 @@ class RidgeSolver:
             print("Approximation error of phi in C:", max(np.abs(values_phi1 - values_phi_real)))
         #print("Omega1", omega1())
 
-    def analyze_embedding(self, gamma1, gamma2):
-        poly1 = self.fit_polynomial(gamma1)
-        poly2 = self.fit_polynomial(gamma2)
+    def analyze_embedding(self, gamma1, gamma2, poly1=None, poly2=None):
+        if poly1 is None:
+            poly1 = self.fit_polynomial(gamma1)
+        if poly2 is None:
+            poly2 = self.fit_polynomial(gamma2)
 
+        u = {1: np.dot(self.a, gamma1), 2: np.dot(self.a, gamma2)}
         true_lambda = np.dot(self.a, gamma2) / np.dot(self.a, gamma1)
         ts = np.linspace(-1, 1, 500)
-        fig, axs = plt.subplots(2, 2)
+        fig, axs = plt.subplots(3, 2)
 
         def get_range(values):
             min_val = np.min(values)
             max_val = np.max(values)
             size = max_val - min_val
-            return min_val - 0.3*size, max_val + 0.3*size
+            return min_val - 5*size, max_val + 5*size
 
-        ax0 = axs[0,0]
-        ax0.set_title('poly1, lambda = u2/u1 = {:.6f}'.format(true_lambda))
-        poly1_values = [poly1(t) for t in ts]
-        min_y1, max_y1 = get_range(poly1_values)
-        ax0.plot(ts, poly1_values, color='red', label='poly_1')
-        ax0.plot(ts, [min(max_y1, max(min_y1, poly2(t/true_lambda))) for t in ts], color='blue', label='poly_2')
-        ax0.plot(ts, [self.phi(t * np.dot(self.a, gamma1)) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
-        ax0.legend()
+        color = {1: 'blue', 2: 'red'}
+        poly = {1: poly1, 2: poly2}
 
-        ax1 = axs[0,1]
-        ax1.set_title('poly2')
-        poly2_values = [poly2(t) for t in ts]
-        min_y2, max_y2 = get_range(poly2_values)
-        ax1.plot(ts, [min(max_y2, max(min_y2, poly1(t*true_lambda))) for t in ts], color='red', label='poly_1')
-        ax1.plot(ts, poly2_values, color='blue', label='poly_2')
-        ax1.plot(ts, [self.phi(t * np.dot(self.a, gamma2)) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
-        ax1.legend()
+        for idx, (src, dst) in enumerate([(1, 2), (2, 1)]):
+            ax = axs[0,idx]
+            ax.set_title(r'$poly_{},\;\lambda = u_{}/u_{} = {:.6f}$'.format(src, dst, src, u[dst]/u[src]))
+            src_values = [poly[src](t) for t in ts]
+            min_y, max_y = get_range(src_values)
+            ax.plot(ts, src_values, color=color[src], label='poly_{}'.format(src))
+            ax.plot(ts, [min(max_y, max(min_y, poly[dst](t/true_lambda))) for t in ts], color='blue', label='poly_{}'.format(dst))
+            ax.plot(ts, [self.phi(t * u[src]) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
+            ax.legend()
 
-        ax2 = axs[1,0]
+            # embedding
+            est = embed_polynomials_l2(poly[src], poly[dst], calc_score=True)
+            ax2 = axs[1,idx]
+            ax2.set_title(r'embed $poly_{}\to poly_{}, \lambda = {:.6f}$, score={:.6f}'.format(
+                src, dst, est['lambda'], est['score']
+            ))
+            ax2.plot(ts, src_values, color=color[src])
+            ax2.plot(ts, [min(max_y, max(min_y, poly[dst](t/est['lambda']))) for t in ts], color=color[dst])
+
+        ax2 = fig.add_subplot(3, 1, 3)
         phi_values = [self.phi(t) for t in ts]
         ax2.plot(ts, phi_values, color='green')
         min_y, max_y = get_range(phi_values)
@@ -275,14 +286,7 @@ class RidgeSolver:
         ax2.plot(ts, [min(max_y, max(min_y, poly1(t/u1))) for t in ts], linestyle='dotted', color='red')
         ax2.plot(ts, [min(max_y, max(min_y, poly2(t/u2))) for t in ts], linestyle='dotted', color='blue')
 
-        # est embedding
-        est_lambda = embed_polynomials_l2(poly1, poly2)
-        ax3 = axs[1,1]
-        ax3.set_title('est embedding, lambda = {:.6f}'.format(est_lambda))
-        ax3.plot(ts, poly1_values, color='red')
-        ax3.plot(ts, [min(max_y, max(min_y, poly2(t/est_lambda))) for t in ts], color='blue')
-        ax3.plot(ts, [self.phi(t * np.dot(self.a, gamma1)) for t in ts], linewidth=4, alpha=0.2, color='green')
-
+        fig.subplots_adjust()
         plt.show()
 
 
