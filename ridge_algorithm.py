@@ -235,16 +235,18 @@ class RidgeSolver:
         if poly2 is None:
             poly2 = self.fit_polynomial(gamma2)
 
-        u = {1: np.dot(self.a, gamma1), 2: np.dot(self.a, gamma2)}
-        ts = np.linspace(-1, 1, 500)
-        fig, axs = plt.subplots(3, 2)
-
         def get_range(values):
             min_val = np.min(values)
             max_val = np.max(values)
             size = max_val - min_val
             return min_val - size, max_val + size
 
+        ts = np.linspace(-1, 1, 500)
+        fig, axs = plt.subplots(3, 2)
+
+        u1 = np.dot(self.a, gamma1)
+        u2 = np.dot(self.a, gamma2)
+        u = {1: u1, 2: u2}
         color = {1: 'blue', 2: 'red'}
         poly = {1: poly1, 2: poly2}
 
@@ -272,15 +274,13 @@ class RidgeSolver:
         ax2.plot(ts, phi_values, color='green')
         min_y, max_y = get_range(phi_values)
 
-        u1 = -np.dot(self.a, gamma1)
         ax2.axvline(x=u1, color='red')
         ax2.axvline(x=-u1, color='red')
 
-        u2 = -np.dot(self.a, gamma2)
         ax2.axvline(x=u2, color='blue')
         ax2.axvline(x=-u2, color='blue')
 
-        ax2.set_title('u1={:.6f}, u2={:.6f}'.format(u1,u2))
+        ax2.set_title('u1={:.6f}, u2={:.6f}'.format(u1, u2))
         ax2.plot(ts, [min(max_y, max(min_y, poly1(t/u1))) for t in ts], linestyle='dotted', color='red')
         ax2.plot(ts, [min(max_y, max(min_y, poly2(t/u2))) for t in ts], linestyle='dotted', color='blue')
 
