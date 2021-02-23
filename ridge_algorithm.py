@@ -12,7 +12,6 @@ from scipy import integrate
 
 # Utility functions
 
-
 def embed_polynomials_l2(p1, p2, l=1.0, calc_score=False):
     """Find lambda for inclusion p1->p2, i.e., such that p1(t) ~ p2(t/lambda), |t|<l.
     
@@ -237,7 +236,6 @@ class RidgeSolver:
             poly2 = self.fit_polynomial(gamma2)
 
         u = {1: np.dot(self.a, gamma1), 2: np.dot(self.a, gamma2)}
-        true_lambda = np.dot(self.a, gamma2) / np.dot(self.a, gamma1)
         ts = np.linspace(-1, 1, 500)
         fig, axs = plt.subplots(3, 2)
 
@@ -245,7 +243,7 @@ class RidgeSolver:
             min_val = np.min(values)
             max_val = np.max(values)
             size = max_val - min_val
-            return min_val - 5*size, max_val + 5*size
+            return min_val - size, max_val + size
 
         color = {1: 'blue', 2: 'red'}
         poly = {1: poly1, 2: poly2}
@@ -256,7 +254,7 @@ class RidgeSolver:
             src_values = [poly[src](t) for t in ts]
             min_y, max_y = get_range(src_values)
             ax.plot(ts, src_values, color=color[src], label='poly_{}'.format(src))
-            ax.plot(ts, [min(max_y, max(min_y, poly[dst](t/true_lambda))) for t in ts], color='blue', label='poly_{}'.format(dst))
+            ax.plot(ts, [min(max_y, max(min_y, poly[dst](t * u[src]/u[dst]))) for t in ts], color=color[dst], label='poly_{}'.format(dst))
             ax.plot(ts, [self.phi(t * u[src]) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
             ax.legend()
 
