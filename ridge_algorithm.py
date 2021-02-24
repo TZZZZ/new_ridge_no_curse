@@ -30,8 +30,8 @@ def get_test_func(deg, trigpcos, trigpsin):
         K = len(trigpsin)
         # k=1: trigpcos[1], trigpsin[0], sin(x), cos(x);  1 <= k <= K
         for k in range(1, K + 1):
-            res += trigpcos[k] * np.cos(k*x)
-            res += trigpsin[k-1] * np.sin(k*x)
+            res += trigpcos[k] * np.cos(k * x)
+            res += trigpsin[k - 1] * np.sin(k * x)
         return (x**deg) * res
 
     return f
@@ -47,16 +47,21 @@ def get_test_func_deriv(deg, trigpcos, trigpsin):
         res = 0 * x
         res += trigpcos[0] * deg
         K = len(trigpsin)
-        for k in range(1, K+1):
-            res += trigpcos[k] * (deg*np.cos(k*x) - k*x*np.sin(k*x))
-            res += trigpsin[k-1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
-        return (x**(deg-1)) * res
+        for k in range(1, K + 1):
+            res += trigpcos[k] * (deg * np.cos(k * x) - k * x * np.sin(k * x))
+            res += trigpsin[k - 1] * (deg * np.sin(k * x) + k * x * np.cos(k * x))
+        return (x**(deg - 1)) * res
 
     return f_deriv
 
 
 
 # Utility functions
+
+def get_random_unit_vector(n):
+    v = np.array([random.gauss(0, 1) for _ in range(n)])
+    return v / np.linalg.norm(v)
+
 
 def embed_polynomials_l2(p1, p2, l=1.0, calc_score=False):
     """Find lambda for inclusion p1->p2, i.e., such that p1(t) ~ p2(t/lambda), |t|<l.
@@ -70,14 +75,14 @@ def embed_polynomials_l2(p1, p2, l=1.0, calc_score=False):
     # S(mu) is a polynomial in mu: sum_{i,j} (a_i - b_i*mu^i)(a_j - b_j*mu^j)int_{l}^l t^{i+j}
     a, b, d = p1.coef, p2.coef, p1.degree()
     assert p2.degree() == d
-    s_coef = np.zeros(2*d + 1)
+    s_coef = np.zeros(2 * d + 1)
     for i in range(d + 1):
         for j in range(d + 1):
             # (a_i - b_i*mu^i)(a_j - b_j*mu^j)int_{l}^l t^{i+j}
             # int t^k = t^{k+1)|_{-l}^l = 0 if k+1 is even else 2*l^{k+1}/(k+1)
             if (i + j + 1) % 2 == 0:
                 continue
-            int_t = 2 * l**(i+j+1)/(i+j+1)
+            int_t = 2 * l**(i + j + 1) / (i + j + 1)
             s_coef[0] += int_t * a[i] * a[j]
             s_coef[i] -= int_t * b[i] * a[j]
             s_coef[j] -= int_t * a[i] * b[j]
@@ -87,7 +92,10 @@ def embed_polynomials_l2(p1, p2, l=1.0, calc_score=False):
     min_value, min_mu = minimize_polynomial(s_poly, -1, 1)
     if not calc_score:
         return 1 / min_mu
-    score = s_poly(0) / min_value
+    if min_value == 0:
+        score = 10000
+    else:
+        score = s_poly(0) / min_value
     return {'lambda': 1 / min_mu, 'score': score}
 
 
@@ -143,10 +151,6 @@ class RidgeSolver:
         self.a = np.array(a) if a is not None else None
         self.phi = phi
 
-    def get_random_unit_vector(self):
-        v = np.array([random.gauss(0, 1) for _ in range(self.n)])
-        return v / np.linalg.norm(v)
-
     def fit_polynomial(self, gamma):
         """Fit polynomial to a function phi(t_k <a,gamma>), |t_k|<=1."""
         ts = np.linspace(-1, 1, 2 * self.N1 + 1)
@@ -155,7 +159,7 @@ class RidgeSolver:
 
     def check_fitting(self, gamma, poly):
         v_gamma = np.dot(gamma, self.a)
-        ts = np.linspace(-self.l*np.sqrt(50), self.l*np.sqrt(50), 10)
+        ts = np.linspace(-self.l * np.sqrt(50), self.l * np.sqrt(50), 10)
         return max(abs(poly(t) - self.phi(v_gamma * t)) for t in ts)
 
     def get_oscillation(self, poly, h=1):
@@ -164,85 +168,97 @@ class RidgeSolver:
         return max(abs(extr['max']), abs(extr['min']))
 
     def solve(self):
-        typical_gamma = self.step_get_typical_gamma()
+        typical_gamma = self.step_get_typical_gamma(log_info = False, check_constant = False)
         if len(typical_gamma) == 1:
             print("Function is almost constant:", self.f_eps(np.zeros(self.n)))
         else:
-            newa = self.step_approximate_a(typical_gamma)
+            newa = self.step_approximate_a(typical_gamma, log_info = False)
             newphr = self.step_approximate_phi(newa)
 
-    def step_get_typical_gamma(self):
-        """Find gamma with 0.45<|v_gamma|<0.75."""
-
+    def step_get_typical_gamma_for_test(self):
+        """Find gamma with 0.45<|v_gamma|<0.75 using True values of a."""
         N2 = self.N2
 
         # Generate N2 gammas
-        gammas = [self.get_random_unit_vector() for _ in range(N2)]
+        gammas = [get_random_unit_vector(self.n) for _ in range(N2)]
         self.gammas = gammas
         if self.a is not None:
             real_v = sqrt(self.n) * np.array([np.dot(self.a, gamma) for gamma in gammas])
             real_abs_v = np.abs(real_v)
         pind = np.where(abs(real_abs_v - 0.5) < 0.15)[0][0]
-        print(pind, real_v[pind], real_abs_v[pind])
+        print("gammas[ind] is typical for ind =", pind, "and n**0.5 * |<a, gammas[ind]>| = ", real_abs_v[pind])
         return gammas[pind]
     
-    #def step_get_typical_gamma(self):
-        #"""Find gamma with 0.45<|v_gamma|<0.75."""
+    def step_get_typical_gamma(self, log_info = False, check_constant = False):
+        """Find gamma with 0.45<|v_gamma|<0.75."""
 
-        #N2 = self.N2
+        N2 = self.N2
 
-        ## Generate N2 gammas
-        #gammas = [self.get_random_unit_vector() for _ in range(N2)]
+        # Generate N2 gammas
+        gammas = [get_random_unit_vector(self.n) for _ in range(N2)]
 
-        #if self.a is not None:
-            #real_v = sqrt(self.n) * np.array([np.dot(self.a, gamma) for gamma in gammas])
-            #real_abs_v = np.abs(real_v)
+        if self.a is not None:
+            real_v = sqrt(self.n) * np.array([np.dot(self.a, gamma) for gamma in gammas])
+            real_abs_v = np.abs(real_v)
 
-        ## Second part of algorithm
-        #all_poly = [self.fit_polynomial(gamma) for gamma in gammas]  # polynom coefficients for all gammas
+        # Second part of algorithm
+        all_poly = [self.fit_polynomial(gamma) for gamma in gammas]  # polynom coefficients for all gammas
         
-        #is_const = self.substep_check_constant(all_poly)
-        #if is_const:
-            #return [None]
-        
-        #logging.warning('start embeddings ...')
-        #embed_info = {i: {j: None for j in range(N2)} for i in range(N2)}  # if phi_i -> phi_j, embed_info[i][j] = corresponding lambda
-        #bound_minus = N2 * 0.43
-        #bound_plus = N2 *0.45
-        #v0 = -1
-        #best_err = 1000
-        #for j in range(N2):
-            #logging.warning('embed j=%d', j)
-            #am_good = 0
-            #for i in range(N2):
-                #vall = embed_polynomials_l2(all_poly[i], all_poly[j], l=self.l)
+        if check_constant:
+            is_const = self.substep_check_constant(all_poly)
+            if is_const:
+                return [None]
+        logging.warning('start embeddings ...')
+        embed_info = {i: {j: None for j in range(N2)} for i in range(N2)}  # if phi_i -> phi_j, embed_info[i][j] = corresponding lambda
+        bound_minus = N2 * 0.43
+        bound_plus = N2 * 0.45
+        v0 = -1
+        best_err = 1000
+        if log_info:
+            self.emb_lambdas = []
+            self.emb_scores = []
+            self.emb_good = []
+        for j in range(N2):
+            logging.warning('embed j=%d', j)
+            am_good = 0
+            for i in range(N2):
+                vall = embed_polynomials_l2(all_poly[i], all_poly[j], l=self.l, calc_score = True)
+                if log_info:
+                    print(vall['lambda'], vall['score'])
+                    self.emb_lambdas.append(vall['lambda'])
+                    self.emb_scores.append(vall['score'])
+                if abs(vall['lambda']) > (1 + 1e-5) and abs(vall['score']) > (1 + 1e-5):
+                    embed_info[i][j] = vall['lambda']
                 #if abs(vall) != 1:
-                    #embed_info[i][j] = vall
-                #if embed_info[i][j] is not None:
-                    #am_good += 1
-            #print('am_good', am_good)
-            #if am_good < bound_plus and am_good >= bound_minus:
-                #v0 = j
-                #break#
-            #err = max(abs(am_good - bound_plus), abs(am_good - bound_minus))
-            #if err < best_err:
-                #best_err = err
-                #v0 = j
+                #    embed_info[i][j] = vall
+                if embed_info[i][j] is not None:
+                    am_good += 1
+            if log_info:
+                print('am_good', am_good)
+                self.emb_good.append(am_good)
+            if am_good < bound_plus and am_good >= bound_minus:
+                v0 = j
+                break
+            err = max(abs(am_good - bound_plus), abs(am_good - bound_minus))
+            if err < best_err:
+                best_err = err
+                v0 = j
 
-        #if self.a is not None:
-            #print(real_abs_v[v0], "check that this number is in [0.45, 0.75]")
-        #if j == N2 - 1:
-            #print("There is no v0 with am_good in [0.43N2 ... 0.45N2]")
-        #return gammas[v0]
-    
+        if self.a is not None:
+            print(real_abs_v[v0], "check that this number is in [0.45, 0.75]")
+        if j == N2 - 1:
+            print("There is no v0 with am_good in [0.43N2 ... 0.45N2]")
+        return gammas[v0]
+
     def substep_check_constant(self, all_poly, omeg=0.015):
         h = np.sqrt(self.n)
         deltas = [self.get_oscillation(poly, h) for poly in all_poly]
         deltamed = np.median(deltas)
-        #print("Deltamed", deltamed)
+        #print("Median of deltas", deltamed)
         return deltamed < omeg
 
-    def step_approximate_a2(self, gamma):
+
+    def step_approximate_a(self, gamma, log_info = False):
         """Approximate vector a.
         
         Params:
@@ -250,123 +266,45 @@ class RidgeSolver:
         """
         vgamma = self.a.dot(gamma)
         n = self.n
-        w = np.zeros(n)  # ws[k] will approximate a[k]*sqrt(n) / |v_gamma|
+        w = np.zeros(n)  # ws[k] will approximate (a[k] * 2 / |v_gamma| / 5) + 2
 
-        poly0 = self.fit_polynomial(gamma)
+        poly0 = self.fit_polynomial(gamma / 2)
         max_lambda = -1
-        self.lambdas04 = []
-        self.lambdas08 = []
-        self.lambdas_true = []
-        self.osc = []
-        self.appr = []
-        for i in range(self.n):
-            ei = np.zeros(self.n)
-            ei[i] = 1
-            poly_ei = self.fit_polynomial(ei)
-            #lambda_i = embed_polynomials_l2(poly0, poly_ei, l=self.l)
-            lambda_i2 = embed_polynomials_l2(poly0, poly_ei, l=self.l)
-            lambda_i = embed_polynomials_l2(poly0, poly_ei, l=0.8)#self.l)
-            self.lambdas04.append(lambda_i)
-            self.lambdas08.append(lambda_i2)
-            self.lambdas_true.append(self.a[i] / vgamma)
-            oscc = self.get_oscillation(poly0)
-            self.osc.append(oscc)
-            ts1 = np.linspace(-1, 1, 300)
-            values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
-            values_phi_real = np.array([self.phi(t * self.a.dot(ei)) for t in ts1])
-            #print("Approximation poly_ei", abs(values_phi_real - values_phi1).mean())
-            appr = abs(values_phi_real - values_phi1).mean()
-            self.appr.append(appr)
-            print(lambda_i2, lambda_i, self.a[i] / vgamma)
-            print(oscc, appr)
-            if abs(lambda_i2 - lambda_i) > 0.5:
-                print("skip it")
-                continue
-            
-            if abs(lambda_i) > max_lambda:
-                max_lambda = abs(lambda_i)
-                max_idx = i
-        print(max_lambda, max_idx, vgamma)
-        if self.a is not None:
-            self.sign = 1 if self.a[max_idx] >= 0 else -1
-        self.osc2 = []
-        self.appr2 = []
-        self.lambdas_true2 = []
-        self.lambdas042 = []
-        self.lambdas082 = []
-        for i in range(n):
-            if i == max_idx:
-                w[i] = max_lambda
-            else:
-                fi = np.zeros(n)
-                fi[max_idx] = 0.9
-                fi[i] = 0.1
-                poly_fi = self.fit_polynomial(fi)
-                lambda_fi = embed_polynomials_l2(poly0, poly_fi, l=self.l)
-                
-                lambda_fi2 = embed_polynomials_l2(poly0, poly_fi, l=0.8)
-                self.lambdas042.append(lambda_fi)
-                self.lambdas082.append(lambda_fi2)
-                self.lambdas_true2.append(((self.a[i] / vgamma) + 9 * max_lambda) / 10)
-                #oscc = self.get_oscillation(poly0)
-                #self.osc.append(oscc)
-                ts1 = np.linspace(-1, 1, 300)
-                values_phi1 = polynomial.polyval(ts1, poly_fi.coef)
-                values_phi_real = np.array([self.phi(t * self.a.dot(fi)) for t in ts1])
-                #print("Approximation poly_ei", abs(values_phi_real - values_phi1).mean())
-                appr2 = abs(values_phi_real - values_phi1).mean()
-                self.appr2.append(appr2)
-                print(lambda_fi2, lambda_fi, ((self.a[i] / vgamma) + 9 * max_lambda) / 10)
-                print(appr2)
-                w[i] = 10*abs(lambda_fi) - 9*max_lambda
-
-        newa = w / np.linalg.norm(w)
-        if self.a is not None:
-            a_compare = self.a * self.sign
-            print("Approximation error of a, linf-norm:", max(abs(a_compare - newa)))
-            print(newa)
-            print(a_compare)
-            print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare - newa))
-        return newa
-
-
-    def step_approximate_a(self, gamma):
-        """Approximate vector a.
-        
-        Params:
-            gamma   --  vector with typical |v_gamma| < 3/4
-        """
-        vgamma = self.a.dot(gamma)
-        n = self.n
-        w = np.zeros(n)  # ws[k] will approximate a[k]*sqrt(n) / |v_gamma|
-
-        poly0 = self.fit_polynomial(gamma/2)
-        max_lambda = -1
-        self.lambdas04 = []
-        self.lambdas08 = []
-        self.lambdas_true = []
-        self.osc = []
-        self.appr = []
+        if log_info:
+            self.lambdas04 = []
+            self.lambdas08 = []
+            self.lambdas_true = []
+            self.osc = []
+            self.appr = []
+            self.scores = []
         for i in range(self.n):
             ei = np.zeros(self.n)
             ei[i] = 1 / 5 / self.n**0.5
             ei += gamma.copy()
             poly_ei = self.fit_polynomial(ei)
-            #lambda_i = embed_polynomials_l2(poly0, poly_ei, l=self.l)
-            lambda_i2 = embed_polynomials_l2(poly0, poly_ei, l=self.l)
-            lambda_i = embed_polynomials_l2(poly0, poly_ei, l=0.8)#self.l)
-            self.lambdas04.append(lambda_i)
-            self.lambdas08.append(lambda_i2)
-            self.lambdas_true.append((self.a[i] * 2 / vgamma / 5 / self.n**0.5) + 2)
-            print(lambda_i, lambda_i2, (self.a[i] * 2 / vgamma / 5 / self.n**0.5) + 2)
-            oscc = self.get_oscillation(poly0)
-            self.osc.append(oscc)
-            ts1 = np.linspace(-1, 1, 300)
-            values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
-            values_phi_real = np.array([self.phi(t * self.a.dot(ei)) for t in ts1])
-            #print("Approximation poly_ei", abs(values_phi_real - values_phi1).mean())
-            appr = abs(values_phi_real - values_phi1).mean()
-            self.appr.append(appr)
+            lambda_i = embed_polynomials_l2(poly0, poly_ei, l=self.l, calc_score=True)
+            scc = lambda_i["score"]
+            if abs(scc) < 1.001:
+                print("Warning: bad score", scc, "when embed poly0 -> ei for i =", i)
+            lambda_i = lambda_i["lambda"]
+            if log_info:
+                self.scores.append(scc)                
+                lambda_i2 = embed_polynomials_l2(poly0, poly_ei, l=0.4, calc_score=True)
+                print("score", lambda_i2["score"])
+                self.scores.append(lambda_i2["score"])
+                lambda_i2 = lambda_i2["lambda"]
+                lambda_i = embed_polynomials_l2(poly0, poly_ei, l=0.8)
+                self.lambdas04.append(lambda_i)
+                self.lambdas08.append(lambda_i2)
+                self.lambdas_true.append((self.a[i] * 2 / vgamma / 5 / self.n**0.5) + 2)
+                print(lambda_i, lambda_i2, (self.a[i] * 2 / vgamma / 5 / self.n**0.5) + 2)
+                oscc = self.get_oscillation(poly0)
+                self.osc.append(oscc)
+                ts1 = np.linspace(-1, 1, 300)
+                values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
+                values_phi_real = np.array([self.phi(t * self.a.dot(ei)) for t in ts1])
+                appr = abs(values_phi_real - values_phi1).mean()
+                self.appr.append(appr)
             w[i] = abs(lambda_i) - 2
         newa = w / np.linalg.norm(w)
         if self.a is not None:
@@ -374,12 +312,9 @@ class RidgeSolver:
         if self.a is not None:
             a_compare = self.a * self.sign
             print("Approximation error of a, linf-norm:", max(abs(a_compare - newa)))
-            #print("Approximation error of a, linf-norm:", max(abs(a_compare + newa)))
             print(newa)
             print(a_compare)
-            print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare - newa))
-            #print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare + newa))
-            
+            print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare - newa))            
         return newa
 
 
@@ -390,15 +325,12 @@ class RidgeSolver:
         ts1 = np.linspace(-1, 1, 500)
         values_phi1 = polynomial.polyval(ts1, poly_phi.coef)
         if self.phi is not None:
-            values_phi_real = np.array([self.phi(t) for t in ts1]) * self.sign
+            values_phi_real = np.array([self.phi(t * self.sign) for t in ts1])
             plt.plot(ts1, values_phi_real, linewidth=5)
         plt.plot(ts1, values_phi1, linewidth=5)
         plt.show()
-        #plt.plot(ts1, values_phi_real- values_phi1, linewidth=5)
-        #plt.show()
         if self.phi is not None:
             print("Approximation error of phi in C:", max(np.abs(values_phi1 - values_phi_real)))
-        #print("Omega1", omega1())
 
     def analyze_embedding(self, gamma1, gamma2, poly1=None, poly2=None):
         if poly1 is None:
@@ -422,10 +354,11 @@ class RidgeSolver:
         poly = {1: poly1, 2: poly2}
 
         for idx, (src, dst) in enumerate([(1, 2), (2, 1)]):
-            ax = axs[0,idx]
+            ax = axs[0, idx]
             ax.set_title(r'$poly_{},\;\lambda = u_{}/u_{} = {:.6f}$'.format(src, dst, src, u[dst]/u[src]))
             src_values = [poly[src](t) for t in ts]
             min_y, max_y = get_range(src_values)
+            ax.axis('off')
             ax.plot(ts, src_values, color=color[src], label='poly_{}'.format(src))
             ax.plot(ts, [min(max_y, max(min_y, poly[dst](t * u[src]/u[dst]))) for t in ts], color=color[dst], label='poly_{}'.format(dst))
             ax.plot(ts, [self.phi(t * u[src]) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
@@ -434,6 +367,8 @@ class RidgeSolver:
             # embedding
             est = embed_polynomials_l2(poly[src], poly[dst], calc_score=True)
             ax2 = axs[1,idx]
+            ax2.axis('off')
+            
             ax2.set_title(r'embed $poly_{}\to poly_{}, \lambda = {:.6f}$, score={:.6f}'.format(
                 src, dst, est['lambda'], est['score']
             ))
@@ -499,8 +434,8 @@ def get_test_func_deriv(deg, trigpcos, trigpsin):
         res += trigpcos[0] * deg
         K = len(trigpsin)
         for k in range(1, K+1):
-            res += trigpcos[k] * (deg*np.cos(k*x) - k*x*np.sin(k*x))
-            res += trigpsin[k-1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
+            res += trigpcos[k] * (deg*np.cos(k*x) - k * x *np.sin(k*x))
+            res += trigpsin[k - 1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
         return (x**(deg-1)) * res
 
     return f_deriv
@@ -510,10 +445,9 @@ def test_example():
     n = 50
     seed = int(time() % 10000)
     print('seed:', seed)
-    eps = 1e-20#0.000001#
+    eps = 1e-20#1e-10#0.000001#
 
-    a = np.array([random.gauss(0, 1) for _ in range(n)])
-    a = a / np.linalg.norm(a)
+    a = get_random_unit_vector(n)
     
     N1 = 200
     M = 12
@@ -521,260 +455,25 @@ def test_example():
     N2 = 25
     N3 = 200
     K = 5
-    trigparams = np.array([random.gauss(0, 1) for _ in range(2*K + 1)])
-    trigparams /= np.linalg.norm(trigparams)
-    trigpcos = trigparams[np.arange(0, 2*K + 1, 2)]#a0, a1, a2, ... aK
+    trigparams = get_random_unit_vector(2 * K + 1)
+    trigpcos = trigparams[np.arange(0, 2 * K + 1, 2)] # a0, a1, a2, ... aK
     trigpcos[0] /= np.sqrt(2)
-    trigpsin = trigparams[np.arange(1, 2*K + 1, 2)]#b1, b2, ... bK
-    l = 0.4
-    deg = 2#if deg == -1, test trigonometric, else test x**(2deg)
-
-
-    def phi(x, deg = -1):
-        if deg == -1:
-            return np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x))
-        return (x**4) * (np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x)))
-
+    trigpsin = trigparams[np.arange(1, 2 * K + 1, 2)] # b1, b2, ... bK
+    l = 1#0.4
+    deg = 8
+    phi = get_test_func(deg, trigpcos, trigpsin)
+    phi_deriv = get_test_func_deriv(deg, trigpcos, trigpsin)
+    print("Alpha: ", get_alpha(phi_deriv, n))
     def f(x):
-        return phi(np.dot(a, x), deg=deg)
+        return phi(np.dot(a, x))
 
     def f_eps(x):
         return f(x) + eps * (2 * random.random() - 1)
 
-    solver = RidgeSolver(n=n, f_eps=f_eps, M=M, M1=M1, N1=N1, N2=N2, N3=N3, a=a, phi= lambda x: phi(x, deg=deg))
+    solver = RidgeSolver(n=n, f_eps=f_eps, M=M, M1=M1, N1=N1, N2=N2, N3=N3, a=a, phi=phi)
     solver.solve()
     return solver
 
 
-#multiplies argument by sqrt(n) and calculates polynom with coefficients = coeff (highest power first)
-def polynom_normed(coeff, x):
-    x *= sqrt(n)
-    res = 0
-    power = 1
-    for i in range(len(coeff)-1, -1, -1):
-        res += coeff[i] *power
-        power *= x
-    return res
-
-def quality1step(ind):
-    tmax = min(1/real_abs_v[ind], 10)
-    p = tmax * np.arange(-20, 20)/20.
-    y = np.zeros(40)
-    yy = np.zeros(40)
-    v = gammas[ind]
-    vgamma = sum(a * v) * np.sqrt(n)
-    coeff = fit_polynomial(v)
-    for i in range(40):
-        #y[i] = f_changed(p[i] * v, gp, gq)
-        #yy[i] = polynom_normed(coeff, p[i]/np.sqrt(n))
-        y[i] = phi(vgamma * p[i], gp, gq, deg=-1)
-        yy[i] = polynom_normed(coeff, p[i])
-    return max(abs(yy - y))
-
-
-def omega1():
-    res = -100
-    index = -1
-    for i in range(N2):
-        nqual = quality1step(i)
-        if nqual > res:
-            res = nqual
-            index = i 
-    return (res, index)
-
-
 if __name__ == "__main__":
     solver = test_example()
-
-
-#def phi(x):
-    #return (np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x)))*(x**4)#(x*x)**4#
-    ###return  np.cos(gp * x + gq)
-
-#def f(x):
-    #return phi(np.dot(a, x))
-
-#def f_eps(x):
-    #return f(x) + eps * (2 * random.random() - 1)
-
-
-#n = 50
-#K = 5
-#seed = 57
-#random.seed(seed)
-#eps = 1e-20
-
-#a = np.array([random.gauss(0, 1) for _ in range(n)])
-#a = a / np.linalg.norm(a)
-
-#trigparams = np.array([random.gauss(0, 1) for _ in range(2 * K + 1)])
-#trigparams = trigparams / np.linalg.norm(trigparams)
-
-#trigpcos = trigparams[np.arange(0, 2 * K + 1, 2)]#a0, a1, a2, ... aK
-#trigpcos[0] /= np.sqrt(2)
-#trigpsin = trigparams[np.arange(1, 2 * K + 1, 2)]#b1, b2, ... bK
-
-#N1 = 200
-#M = 12
-#M1 = 30
-#N2 = 25
-#N3 = 200
-#l = 0.4
-#solver = RidgeSolver(n=n, f_eps=f_eps, M=M, M1=M1, N1=N1, N2=N2, N3=N3, a=a, phi=phi)
-##solver.solve()
-
-#gammas = [solver.get_random_unit_vector() for _ in range(N2)]
-
-#if solver.a is not None:
-    #real_v = sqrt(solver.n) * np.array([np.dot(solver.a, gamma) for gamma in gammas])
-    #real_abs_v = np.abs(real_v)
-
-#pind = np.where(abs(real_abs_v - 0.5) < 0.15)[0][0]
-#print(pind, real_v[pind], real_abs_v[pind])
-#all_poly = [solver.fit_polynomial(gamma) for gamma in gammas]  # polynom coefficients for all gammas
-
-#gamma = gammas[pind]
-#g0 =gamma
-#p0 = all_poly[pind]
-##g0 = gammas[0]
-##p0 = all_poly[0]
-##g1 = gammas[1]
-##p1 = all_poly[1]
-##vall = embed_polynomials_l2(p0, p1, l=0.4)
-##vall2 = embed_polynomials_l2(p0, p1, l=0.4 * (50**0.5))
-
-##print("True:", g1.dot(a) / g0.dot(a))
-
-##print("0.4", vall)
-##print("0.4 * 50**0.5", vall2)
-###print("Deriv", (p1(1e-10) - p1(0))/(p0(1e-10) - p0(0)))
-
-##ts1 = np.linspace(-0.4*np.sqrt(50), 0.4*np.sqrt(50), 500)
-
-##plt.plot(ts1, values_phi_real)
-##plt.plot(ts1, values_phi1)
-##plt.show()
-
-
-
-
-#vgamma = a.dot(gamma)
-#n = 50
-#w = np.zeros(n)  # ws[k] will approximate a[k]*sqrt(n) / |v_gamma|
-
-#poly0 = solver.fit_polynomial(gamma)
-#max_lambda = -1
-#for i in range(1):
-    #ei = np.zeros(n)
-    #ei[i] = 1
-    #poly_ei = solver.fit_polynomial(ei)
-    ##lambda_i2 = embed_polynomials_l2(poly0, poly_ei, l=self.l * self.n**0.5)
-    #lambda_i2 = embed_polynomials_l2(poly0, poly_ei, l=0.4)
-    #lambda_i = embed_polynomials_l2(poly0, poly_ei, l=0.8)#self.l)
-    #print(lambda_i2, lambda_i, a[i] / vgamma)
-    #if abs(lambda_i2 - lambda_i) > 0.5:
-        #print("skip it")
-        #continue
-    #if abs(lambda_i) > max_lambda:
-        #max_lambda = abs(lambda_i)
-        #max_idx = i
-#print("True:", ei.dot(a) / g0.dot(a))
-
-#ts1 = np.linspace(-1, 1, 500)
-#values_phi1 = polynomial.polyval(ts1, p0.coef)
-#values_phi_real = np.array([phi(t * a.dot(g0)) for t in ts1])
-#print("Approximation poly0", abs(values_phi_real - values_phi1).mean())
-
-
-#values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
-#values_phi_real = np.array([phi(t * a.dot(ei)) for t in ts1])
-#print("Approximation poly_ei", abs(values_phi_real - values_phi1).mean())
-
-
-#values_phi1 = polynomial.polyval(ts1, poly0.coef)
-#values_phi_real = np.array([phi(t * a.dot(g0)) for t in ts1])
-#print("Oscillation poly0", max(abs(values_phi_real)) - phi(0))
-
-#values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
-#values_phi_real = np.array([phi(t * a.dot(ei)) for t in ts1])
-#print("Oscillation poly_ei", max(abs(values_phi_real)) - phi(0))
-
-
-#ts1 = np.linspace(-1, 1, 500)
-#values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
-
-#values_phi_real = np.array([phi(t * a.dot(ei)) for t in ts1])
-
-##if self.a is not None:
-    ##self.sign = 1 if self.a[max_idx] >= 0 else -1
-##print("info ", vgamma, max_lambda, max_idx)
-##for i in range(n):
-    ##if i == max_idx:
-        ##w[i] = max_lambda
-    ##else:
-        ##fi = np.zeros(n)
-        ##fi[max_idx] = 0.9
-        ##fi[i] = 0.1
-        ##poly_fi = self.fit_polynomial(fi)
-        ##lambda_fi = embed_polynomials_l2(poly0, poly_fi, l=self.l)
-        ##lambda_fi2 = embed_polynomials_l2(poly0, poly_fi, l=self.l * 2)
-        ##lambda_fi3 = embed_polynomials_l2(poly0, poly_fi, l=self.l * 4)
-        ##print("sec", lambda_fi, lambda_fi2, lambda_fi3, ((self.a[i]/vgamma) + 9 * max_lambda)/10)
-        ##w[i] = 10*abs(lambda_fi) - 9*max_lambda
-
-##newa = w / np.linalg.norm(w)
-
-
-
-##wts1 = np.linspace(-0.4*np.sqrt(50), 0.4*np.sqrt(50), 500)
-##wvalues_phi1 = polynomial.polyval(wts1, p1.coef)
-
-##wvalues_phi_real = np.array([phi(t * a.dot(g1)) for t in wts1])
-##plt.plot(wts1, wvalues_phi_real)
-##plt.plot(wts1, wvalues_phi1)
-##plt.show()
-
-##polynomial.polyval(0.4, p0.coef)
-##phi(0.4 * a.dot(g0))
-
-
-##i = 0
-##h = 0.4*np.sqrt(solver.n)
-##polyi = all_poly[i]
-##polyi -= polynomial.polyval(0, polyi.coef)
-##roots = polyi.deriv().roots()
-##real_roots = [root.real for root in roots if abs(root.imag) < 1e-8]
-##active_roots = [root for root in real_roots if -h <= root <= h]
-##points = active_roots + [-h, h]
-##values = polynomial.polyval(points, polyi.coef)
-##max_idx = np.argmax(values)
-##min_idx = np.argmin(values)
-##best = max(abs(values[max_idx]), abs(values[min_idx]))
-
-##def phi(x, deg = -1):
-    ##if deg == -1:
-        ##return np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x))
-    ###return (x*x) ** deg
-    ##return (np.sum(trigpsin * np.sin(np.arange(1, K + 1) * np.pi * x)) + np.sum(trigpcos * np.cos(np.arange(0, K + 1) * np.pi * x))) * (x**8)
-
-
-
-#gamma = solver.gammas[4]
-#vgamma = solver.a.dot(gamma)
-
-#ei = np.zeros(solver.n)
-#i = 30
-#ei[i] = 1
-#poly_ei = solver.fit_polynomial(ei)
-
-#poly0 = solver.fit_polynomial(gamma)
-#ts1 = np.linspace(1/solver.lambdas_true[30], -1/solver.lambdas_true[30], 300)
-#ts2 = np.linspace(-1, 1, 300)
-#values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
-#values_phi2 = polynomial.polyval(ts2, poly0.coef)
-#values_phi_real = np.array([solver.phi(t * solver.a.dot(ei)) for t in ts1])
-
-#plt.plot(ts2, values_phi1)
-#plt.plot(ts2, values_phi_real)
-#plt.plot(ts2, values_phi2)
-#plt.show()
