@@ -1,12 +1,10 @@
 import random
 import logging
+import numpy as np
+import matplotlib.pyplot as plt
 from math import erf, sqrt
 from time import time
-
-import sympy
-import numpy as np
 from numpy.polynomial import polynomial
-import matplotlib.pyplot as plt
 from scipy import integrate
 
 
@@ -27,9 +25,9 @@ def get_test_func(deg, trigpcos, trigpsin):
     def f(x):
         res = 0 * x  # works for vector and scalar x
         res += trigpcos[0]
-        K = len(trigpsin)
+        K2 = len(trigpsin)
         # k=1: trigpcos[1], trigpsin[0], sin(x), cos(x);  1 <= k <= K
-        for k in range(1, K + 1):
+        for k in range(1, K2 + 1):
             res += trigpcos[k] * np.cos(k * x)
             res += trigpsin[k - 1] * np.sin(k * x)
         return (x**deg) * res
@@ -46,8 +44,8 @@ def get_test_func_deriv(deg, trigpcos, trigpsin):
     def f_deriv(x):
         res = 0 * x
         res += trigpcos[0] * deg
-        K = len(trigpsin)
-        for k in range(1, K + 1):
+        K2 = len(trigpsin)
+        for k in range(1, K2 + 1):
             res += trigpcos[k] * (deg * np.cos(k * x) - k * x * np.sin(k * x))
             res += trigpsin[k - 1] * (deg * np.sin(k * x) + k * x * np.cos(k * x))
         return (x**(deg - 1)) * res
@@ -243,7 +241,6 @@ class RidgeSolver:
             if err < best_err:
                 best_err = err
                 v0 = j
-
         if self.a is not None:
             print(real_abs_v[v0], "check that this number is in [0.45, 0.75]")
         if j == N2 - 1:
@@ -267,7 +264,6 @@ class RidgeSolver:
         vgamma = self.a.dot(gamma)
         n = self.n
         w = np.zeros(n)  # ws[k] will approximate (a[k] * 2 / |v_gamma| / 5) + 2
-
         poly0 = self.fit_polynomial(gamma / 2)
         max_lambda = -1
         if log_info:
@@ -346,7 +342,6 @@ class RidgeSolver:
 
         ts = np.linspace(-1, 1, 500)
         fig, axs = plt.subplots(3, 2)
-
         u1 = np.dot(self.a, gamma1)
         u2 = np.dot(self.a, gamma2)
         u = {1: u1, 2: u2}
@@ -358,7 +353,7 @@ class RidgeSolver:
             ax.set_title(r'$poly_{},\;\lambda = u_{}/u_{} = {:.6f}$'.format(src, dst, src, u[dst]/u[src]))
             src_values = [poly[src](t) for t in ts]
             min_y, max_y = get_range(src_values)
-            ax.axis('off')
+            #ax.axis('off')
             ax.plot(ts, src_values, color=color[src], label='poly_{}'.format(src))
             ax.plot(ts, [min(max_y, max(min_y, poly[dst](t * u[src]/u[dst]))) for t in ts], color=color[dst], label='poly_{}'.format(dst))
             ax.plot(ts, [self.phi(t * u[src]) for t in ts], linewidth=4, alpha=0.2, color='green', label='phi')
@@ -367,7 +362,7 @@ class RidgeSolver:
             # embedding
             est = embed_polynomials_l2(poly[src], poly[dst], calc_score=True)
             ax2 = axs[1,idx]
-            ax2.axis('off')
+            #ax2.axis('off')
             
             ax2.set_title(r'embed $poly_{}\to poly_{}, \lambda = {:.6f}$, score={:.6f}'.format(
                 src, dst, est['lambda'], est['score']
@@ -413,11 +408,11 @@ def get_test_func(deg, trigpcos, trigpsin):
     def f(x):
         res = 0 * x  # works for vector and scalar x
         res += trigpcos[0]
-        K = len(trigpsin)
+        K2 = len(trigpsin)
         # k=1: trigpcos[1], trigpsin[0], sin(x), cos(x);  1 <= k <= K
-        for k in range(1, K + 1):
-            res += trigpcos[k] * np.cos(k*x)
-            res += trigpsin[k-1] * np.sin(k*x)
+        for k in range(1, K2 + 1):
+            res += trigpcos[k] * np.cos(k * x)
+            res += trigpsin[k - 1] * np.sin(k * x)
         return (x**deg) * res
 
     return f
@@ -432,11 +427,11 @@ def get_test_func_deriv(deg, trigpcos, trigpsin):
     def f_deriv(x):
         res = 0 * x
         res += trigpcos[0] * deg
-        K = len(trigpsin)
-        for k in range(1, K+1):
-            res += trigpcos[k] * (deg*np.cos(k*x) - k * x *np.sin(k*x))
-            res += trigpsin[k - 1] * (deg*np.sin(k*x) + k*x*np.cos(k*x))
-        return (x**(deg-1)) * res
+        K2 = len(trigpsin)
+        for k in range(1, K2 + 1):
+            res += trigpcos[k] * (deg * np.cos(k * x) - k * x * np.sin(k * x))
+            res += trigpsin[k - 1] * (deg * np.sin(k * x) + k * x * np.cos(k * x))
+        return (x**(deg - 1)) * res
 
     return f_deriv
 
@@ -446,19 +441,17 @@ def test_example():
     seed = int(time() % 10000)
     print('seed:', seed)
     eps = 1e-20#1e-10#0.000001#
-
     a = get_random_unit_vector(n)
-    
     N1 = 200
     M = 12
     M1 = 30
     N2 = 25
     N3 = 200
-    K = 5
-    trigparams = get_random_unit_vector(2 * K + 1)
-    trigpcos = trigparams[np.arange(0, 2 * K + 1, 2)] # a0, a1, a2, ... aK
+    K2 = 7
+    trigparams = get_random_unit_vector(2 * K2 + 1)
+    trigpcos = trigparams[np.arange(0, 2 * K2 + 1, 2)] # a0, a1, a2, ... aK
     trigpcos[0] /= np.sqrt(2)
-    trigpsin = trigparams[np.arange(1, 2 * K + 1, 2)] # b1, b2, ... bK
+    trigpsin = trigparams[np.arange(1, 2 * K2 + 1, 2)] # b1, b2, ... bK
     l = 1#0.4
     deg = 8
     phi = get_test_func(deg, trigpcos, trigpsin)
