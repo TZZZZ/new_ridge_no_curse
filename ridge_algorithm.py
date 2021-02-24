@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import sympy
 from scipy import integrate
 
-from scipy import integrate
 
 def get_alpha(phi_deriv, n):
     """Integrate phi_deriv(<a,x>)^2 dx over probability measure on the sphere S^{n-1}"""
