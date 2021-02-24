@@ -232,7 +232,7 @@ class RidgeSolver:
         #print("Deltamed", deltamed)
         return deltamed < omeg
 
-    def step_approximate_a(self, gamma):
+    def step_approximate_a2(self, gamma):
         """Approximate vector a.
         
         Params:
@@ -319,6 +319,58 @@ class RidgeSolver:
             print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare - newa))
         return newa
 
+
+    def step_approximate_a(self, gamma):
+        """Approximate vector a.
+        
+        Params:
+            gamma   --  vector with typical |v_gamma| < 3/4
+        """
+        vgamma = self.a.dot(gamma)
+        n = self.n
+        w = np.zeros(n)  # ws[k] will approximate a[k]*sqrt(n) / |v_gamma|
+
+        poly0 = self.fit_polynomial(gamma/2)
+        max_lambda = -1
+        self.lambdas04 = []
+        self.lambdas08 = []
+        self.lambdas_true = []
+        self.osc = []
+        self.appr = []
+        for i in range(self.n):
+            ei = np.zeros(self.n)
+            ei[i] = 1 / 5 / self.n**0.5
+            ei += gamma.copy()
+            poly_ei = self.fit_polynomial(ei)
+            #lambda_i = embed_polynomials_l2(poly0, poly_ei, l=self.l)
+            lambda_i2 = embed_polynomials_l2(poly0, poly_ei, l=self.l)
+            lambda_i = embed_polynomials_l2(poly0, poly_ei, l=0.8)#self.l)
+            self.lambdas04.append(lambda_i)
+            self.lambdas08.append(lambda_i2)
+            self.lambdas_true.append((self.a[i] * 2 / vgamma / 5 / self.n**0.5) + 2)
+            print(lambda_i, lambda_i2, (self.a[i] * 2 / vgamma / 5 / self.n**0.5) + 2)
+            oscc = self.get_oscillation(poly0)
+            self.osc.append(oscc)
+            ts1 = np.linspace(-1, 1, 300)
+            values_phi1 = polynomial.polyval(ts1, poly_ei.coef)
+            values_phi_real = np.array([self.phi(t * self.a.dot(ei)) for t in ts1])
+            #print("Approximation poly_ei", abs(values_phi_real - values_phi1).mean())
+            appr = abs(values_phi_real - values_phi1).mean()
+            self.appr.append(appr)
+            w[i] = abs(lambda_i) - 2
+        newa = w / np.linalg.norm(w)
+        if self.a is not None:
+            a_compare = self.a# * self.sign
+            print("Approximation error of a, linf-norm:", max(abs(a_compare - newa)))
+            print("Approximation error of a, linf-norm:", max(abs(a_compare + newa)))
+            print(newa)
+            print(a_compare)
+            print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare - newa))
+            print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare + newa))
+            
+        return newa
+
+
     def step_approximate_phi(self, newa):
         ts = np.linspace(-1, 1, 2 * self.N3 + 1, endpoint = True)
         values_phi = np.array([self.f_eps(t * newa) for t in ts])
@@ -326,7 +378,7 @@ class RidgeSolver:
         ts1 = np.linspace(-1, 1, 500)
         values_phi1 = polynomial.polyval(ts1, poly_phi.coef)
         if self.phi is not None:
-            values_phi_real = np.array([self.phi(t * self.sign) for t in ts1])
+            values_phi_real = np.array([self.phi(t) for t in ts1])#*self.sign
         plt.plot(ts1, values_phi_real, linewidth=5)
         plt.plot(ts1, values_phi1, linewidth=5)
         plt.show()
