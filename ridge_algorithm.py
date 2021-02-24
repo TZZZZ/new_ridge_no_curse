@@ -3,10 +3,10 @@ import logging
 from math import erf, sqrt
 from time import time
 
+import sympy
 import numpy as np
 from numpy.polynomial import polynomial
 import matplotlib.pyplot as plt
-import sympy
 from scipy import integrate
 
 
@@ -67,19 +67,27 @@ def embed_polynomials_l2(p1, p2, l=1.0, calc_score=False):
     """
 
     # we minimize S(mu) = int_{-l}^l |p1(t)-p2(mu t)|^2 dt
-    # S(mu) is a polynomial in mu; to calculate it we use sympy and Polynomial class
-    mu = sympy.Symbol('mu')
-    assert p1.degree() == p2.degree()
-    q = polynomial.Polynomial([p1.coef[i] - p2.coef[i] * mu**i for i in range(p1.degree())])
-    q = q**2
-    q = q.integ()
-    S = q(l) - q(-l)
-    S_coeff = [float(c) for c in reversed(sympy.Poly(S.expand()).all_coeffs())]  # sympy magic
-    S_poly = polynomial.Polynomial(S_coeff)
-    min_value, min_mu = minimize_polynomial(S_poly, -1, 1)
+    # S(mu) is a polynomial in mu: sum_{i,j} (a_i - b_i*mu^i)(a_j - b_j*mu^j)int_{l}^l t^{i+j}
+    a, b, d = p1.coef, p2.coef, p1.degree()
+    assert p2.degree() == d
+    s_coef = np.zeros(2*d + 1)
+    for i in range(d + 1):
+        for j in range(d + 1):
+            # (a_i - b_i*mu^i)(a_j - b_j*mu^j)int_{l}^l t^{i+j}
+            # int t^k = t^{k+1)|_{-l}^l = 0 if k+1 is even else 2*l^{k+1}/(k+1)
+            if (i + j + 1) % 2 == 0:
+                continue
+            int_t = 2 * l**(i+j+1)/(i+j+1)
+            s_coef[0] += int_t * a[i] * a[j]
+            s_coef[i] -= int_t * b[i] * a[j]
+            s_coef[j] -= int_t * a[i] * b[j]
+            s_coef[i+j] += int_t * b[i] * b[j]
+
+    s_poly = polynomial.Polynomial(s_coef)
+    min_value, min_mu = minimize_polynomial(s_poly, -1, 1)
     if not calc_score:
         return 1 / min_mu
-    score = S_poly(0) / min_value
+    score = s_poly(0) / min_value
     return {'lambda': 1 / min_mu, 'score': score}
 
 
