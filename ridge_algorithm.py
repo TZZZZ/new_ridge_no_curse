@@ -17,7 +17,6 @@ def get_alpha(phi_deriv, n):
     return integrate.quad(func, -1, 1)[0] / integrate.quad(dens, -1, 1)[0]
 
 
-
 def get_test_func(deg, trigpcos, trigpsin):
     """Returns function x**deg * T(x).
     T is a trigonometric polynomial:
@@ -363,13 +362,15 @@ class RidgeSolver:
             w[i] = abs(lambda_i) - 2
         newa = w / np.linalg.norm(w)
         if self.a is not None:
-            a_compare = self.a# * self.sign
+            self.sign = np.sign(self.a[0] / newa[0])
+        if self.a is not None:
+            a_compare = self.a * self.sign
             print("Approximation error of a, linf-norm:", max(abs(a_compare - newa)))
-            print("Approximation error of a, linf-norm:", max(abs(a_compare + newa)))
+            #print("Approximation error of a, linf-norm:", max(abs(a_compare + newa)))
             print(newa)
             print(a_compare)
             print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare - newa))
-            print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare + newa))
+            #print("Approximation error of a, l2-norm:", np.linalg.norm(a_compare + newa))
             
         return newa
 
@@ -381,8 +382,8 @@ class RidgeSolver:
         ts1 = np.linspace(-1, 1, 500)
         values_phi1 = polynomial.polyval(ts1, poly_phi.coef)
         if self.phi is not None:
-            values_phi_real = np.array([self.phi(t) for t in ts1])#*self.sign
-        plt.plot(ts1, values_phi_real, linewidth=5)
+            values_phi_real = np.array([self.phi(t) for t in ts1]) * self.sign
+            plt.plot(ts1, values_phi_real, linewidth=5)
         plt.plot(ts1, values_phi1, linewidth=5)
         plt.show()
         #plt.plot(ts1, values_phi_real- values_phi1, linewidth=5)
